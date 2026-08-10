@@ -14,3 +14,8 @@
 ## Param (Adalah metode untuk mengambil value dari sebuah dynamic route)
 
 - Sama seperti query dia di gunakan didalam parameter function dari Method dan memberikan type berdasarkan key yang ada beda nya dia menggunakan @Params
+
+## Body dan Type DTO
+
+- Untuk mengirimkan body pada saat http request kita menggunakan @Body tetapi di tahap key value object yang kita kirim kita menggunakan DTO, DTO sama seperti interface beda nya DTO adalah class kenapa mengguakan class karena DTO akan tetap disimpan sampai tahap akhir sedangkan interface di hapus.
+- Untuk membuat dto kita membuat folder baru di dalam model User, kemudian mendeklarasikan jenis DTO, ingat ini berkaitan dengan body contoh nya create user dan update user dengan menggunakan update-user.dto.ts. DST
