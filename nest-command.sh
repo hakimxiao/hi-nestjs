@@ -7,3 +7,7 @@
 
     # Untuk membuat services user
     nest g service user
+
+# INTERCEPTOR 
+    #  Digunakan untuk handle result response dengan data dan juga metadata
+    nest g interceptor utils/transform --flat

@@ -268,3 +268,409 @@ apabila memang menggunakan `filter()`.
 ## Kesimpulan
 
 Materi ini memperkenalkan penggunaan Exception Handling pada NestJS melalui `NotFoundException`. Dengan melempar exception langsung dari service layer, aplikasi menjadi lebih bersih, lebih konsisten, dan lebih sesuai dengan prinsip Separation of Concerns. Selain itu, NestJS dapat secara otomatis menghasilkan HTTP Response yang tepat tanpa perlu penanganan manual di controller.
+
+# Global Response Interceptor untuk Standardisasi Format API
+
+## Apa yang Dipelajari
+
+Pada materi ini saya mempelajari **Interceptor** di NestJS dan bagaimana menggunakannya untuk menstandarisasi format respons API secara global.
+
+Sebelumnya setiap endpoint mengembalikan data secara langsung sesuai hasil dari controller atau service. Pendekatan tersebut dapat menyebabkan format respons berbeda-beda antar endpoint.
+
+Dengan menggunakan **TransformInterceptor**, seluruh respons API dapat dibungkus ke dalam struktur yang seragam sehingga client memiliki kontrak respons yang konsisten.
+
+---
+
+## Perubahan yang Dilakukan
+
+### TransformInterceptor
+
+Membuat interceptor baru:
+
+```bash id="d8oix6"
+nest g interceptor utils/transform --flat
+```
+
+Interceptor ini bertugas mentransformasi seluruh respons yang keluar dari aplikasi.
+
+File:
+
+```text id="xk6gnr"
+src/utils/transform.interceptor.ts
+```
+
+### Global Registration
+
+Mendaftarkan interceptor secara global pada fase bootstrap aplikasi.
+
+File:
+
+```text id="26uxnm"
+src/main.ts
+```
+
+Dengan pendekatan ini seluruh endpoint otomatis menggunakan interceptor tanpa perlu menambahkan dekorator pada setiap controller.
+
+### Unit Test
+
+Menambahkan unit test dasar untuk memastikan interceptor dapat dibuat dan digunakan dengan benar.
+
+File:
+
+```text id="2wknwm"
+src/utils/transform.interceptor.spec.ts
+```
+
+### Dokumentasi
+
+Menambahkan dokumentasi perintah CLI NestJS yang digunakan untuk menghasilkan interceptor.
+
+File:
+
+```text id="y4wg0u"
+nest-command.sh
+```
+
+---
+
+## Sebelum
+
+Controller mengembalikan data secara langsung.
+
+```ts id="6zzyou"
+@Get()
+findAll() {
+  return this.userService.findAllUsers();
+}
+```
+
+Response:
+
+```json id="ukg4aj"
+[
+  {
+    "id": 1,
+    "name": "John"
+  }
+]
+```
+
+Atau endpoint lain mungkin mengembalikan:
+
+```json id="pnwj47"
+{
+  "users": [...]
+}
+```
+
+Tidak ada format standar yang mengikat seluruh API.
+
+---
+
+## Sesudah
+
+Controller tetap mengembalikan data seperti biasa.
+
+```ts id="ygk7c9"
+@Get()
+findAll() {
+  return this.userService.findAllUsers();
+}
+```
+
+Namun sebelum respons dikirim ke client, interceptor akan mentransformasinya menjadi:
+
+```json id="n8g3cl"
+{
+  "statusCode": 200,
+  "message": "Success",
+  "data": [
+    {
+      "id": 1,
+      "name": "John"
+    }
+  ]
+}
+```
+
+Seluruh endpoint akan mengikuti format yang sama.
+
+---
+
+## Mengenal Interceptor
+
+Interceptor adalah salah satu fitur utama NestJS yang digunakan untuk menangani **cross-cutting concerns**.
+
+Cross-cutting concern adalah logika yang digunakan oleh banyak bagian aplikasi dan tidak termasuk business logic utama.
+
+Contoh penggunaan interceptor:
+
+- Transformasi response
+- Logging
+- Caching
+- Timeout
+- Monitoring
+- Performance tracking
+- Data serialization
+
+Interceptor berada di antara request dan response.
+
+Alur sederhananya:
+
+```text id="pj1xj6"
+Request
+   ↓
+Controller
+   ↓
+Service
+   ↓
+Interceptor
+   ↓
+Response
+```
+
+---
+
+## Implementasi TransformInterceptor
+
+Interceptor mengimplementasikan interface:
+
+```ts id="kh2hzc"
+NestInterceptor;
+```
+
+dan method utama:
+
+```ts id="m31g5g"
+intercept();
+```
+
+Contoh struktur dasar:
+
+```ts id="m0bkhw"
+@Injectable()
+export class TransformInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler) {
+    return next.handle();
+  }
+}
+```
+
+---
+
+## Menggunakan RxJS Operator map()
+
+NestJS menggunakan RxJS untuk memproses aliran data response.
+
+Interceptor memanfaatkan operator:
+
+```ts id="0k0cdz"
+map();
+```
+
+untuk mengubah data sebelum dikirim ke client.
+
+Contoh:
+
+```ts id="1cgqjv"
+return next.handle().pipe(
+  map((data) => ({
+    statusCode: response.statusCode,
+    message: 'Success',
+    data,
+  })),
+);
+```
+
+Konsep ini mirip seperti:
+
+```js id="e3n8de"
+array.map(...)
+```
+
+namun digunakan pada Observable.
+
+---
+
+## Mengenal ExecutionContext
+
+Untuk mendapatkan informasi request atau response saat ini, interceptor menggunakan:
+
+```ts id="hkupgi"
+ExecutionContext;
+```
+
+Contoh:
+
+```ts id="clj86q"
+const response = context.switchToHttp().getResponse();
+```
+
+Melalui objek tersebut interceptor dapat mengakses:
+
+- Status code HTTP
+- Request object
+- Response object
+- Header
+- Informasi konteks lainnya
+
+Pada implementasi ini digunakan untuk mengambil:
+
+```ts id="2pn5f4"
+response.statusCode;
+```
+
+agar nilai status code selalu sesuai dengan respons aktual.
+
+---
+
+## Global Interceptor
+
+NestJS memungkinkan interceptor diterapkan pada tiga level:
+
+### 1. Method Level
+
+```ts id="1z8tkx"
+@UseInterceptors(TransformInterceptor)
+```
+
+Hanya berlaku pada satu endpoint.
+
+### 2. Controller Level
+
+```ts id="q5f06l"
+@UseInterceptors(TransformInterceptor)
+@Controller('users')
+```
+
+Berlaku untuk seluruh endpoint dalam controller.
+
+### 3. Global Level
+
+```ts id="4zsn56"
+app.useGlobalInterceptors(new TransformInterceptor());
+```
+
+Berlaku untuk seluruh aplikasi.
+
+Pada implementasi ini digunakan pendekatan global agar format respons selalu konsisten.
+
+---
+
+## Konsep Penting
+
+### 1. API Response Contract
+
+Client dan server harus memiliki kontrak yang jelas mengenai bentuk data yang dikirim.
+
+Sebelum:
+
+```text id="sgm3gu"
+Endpoint A → [...]
+Endpoint B → {...}
+Endpoint C → {...}
+```
+
+Sesudah:
+
+```text id="k6kjjj"
+Endpoint A → { statusCode, message, data }
+Endpoint B → { statusCode, message, data }
+Endpoint C → { statusCode, message, data }
+```
+
+Kontrak API menjadi lebih konsisten.
+
+### 2. Separation of Concerns
+
+Sebelumnya:
+
+```text id="oee3k8"
+Controller
+ ├── Routing
+ ├── Business Logic
+ └── Response Formatting
+```
+
+Sesudah:
+
+```text id="jlwm7r"
+Controller
+ ├── Routing
+ └── Business Logic
+
+Interceptor
+ └── Response Formatting
+```
+
+Tanggung jawab transformasi respons dipindahkan ke layer yang lebih tepat.
+
+### 3. Cross-Cutting Concern
+
+Format response adalah kebutuhan yang digunakan oleh seluruh endpoint.
+
+Karena itu implementasinya lebih tepat ditempatkan pada interceptor dibandingkan menulis kode yang sama berulang kali di controller.
+
+---
+
+## Dampak Perubahan
+
+### Keuntungan
+
+- Format respons menjadi konsisten.
+- Mengurangi duplikasi kode.
+- Controller menjadi lebih bersih.
+- Client lebih mudah melakukan parsing data.
+- Mudah menambahkan metadata tambahan di masa depan.
+
+Contoh:
+
+```json id="mxxg8k"
+{
+  "statusCode": 200,
+  "message": "Success",
+  "timestamp": "2026-08-14T10:00:00Z",
+  "data": {}
+}
+```
+
+### Konsekuensi
+
+- Merupakan breaking change bagi client lama.
+- Frontend dan mobile perlu menyesuaikan parsing response.
+- Seluruh endpoint perlu diuji ulang untuk memastikan format baru diterapkan dengan benar.
+
+---
+
+## Hubungan dengan Materi Sebelumnya
+
+Perjalanan arsitektur NestJS yang telah dipelajari:
+
+```text id="vl1ebm"
+Controller
+      ↓
+Service
+      ↓
+Exception Handling
+      ↓
+Interceptor
+      ↓
+HTTP Response
+```
+
+Sebelumnya saya mempelajari:
+
+- Provider
+- Dependency Injection
+- Service Layer
+- NotFoundException
+
+Pada materi ini saya mempelajari bahwa NestJS menyediakan **Interceptor** untuk memodifikasi data sebelum dikirim ke client tanpa mengubah business logic yang ada.
+
+---
+
+## Kesimpulan
+
+TransformInterceptor digunakan untuk menstandarisasi format respons API secara global. Dengan mendaftarkannya melalui `app.useGlobalInterceptors()`, seluruh endpoint otomatis mengembalikan struktur respons yang konsisten berupa `statusCode`, `message`, dan `data`.
+
+Pendekatan ini mengikuti best practice NestJS dalam menangani cross-cutting concerns dan membantu menjaga konsistensi kontrak API di seluruh aplikasi.
