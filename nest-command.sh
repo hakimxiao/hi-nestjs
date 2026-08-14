@@ -16,3 +16,7 @@
 # MIDDLEWARE
     # 
     nest g middleware middleware/api-key --flat
+
+# GUARD 
+    # Guard Dijalankan setelah middleware dia bertugas menentukan apakah req tersebut layak di lanjutkan atau false
+    nest g guard guards/role --flat

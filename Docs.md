@@ -1698,3 +1698,608 @@ Saya juga mempelajari bagaimana middleware didaftarkan melalui `NestModule`, dik
 Konsep penting lainnya adalah penggunaan `next()` untuk meneruskan request ketika validasi berhasil dan `UnauthorizedException` untuk menghentikan request yang tidak terotorisasi.
 
 Implementasi ini memperkuat pemahaman mengenai **request lifecycle, authentication layer, middleware configuration, dan Separation of Concerns** pada NestJS.
+
+# Guard dan Otorisasi Berbasis Role
+
+## Apa yang Dipelajari
+
+Pada materi ini saya mempelajari **Guard pada NestJS** dan bagaimana Guard digunakan untuk melakukan **authorization**, yaitu menentukan apakah sebuah request memiliki hak akses untuk menjalankan endpoint tertentu.
+
+Pada materi sebelumnya, Middleware digunakan untuk melakukan autentikasi API Key. Sekarang ditambahkan layer keamanan setelah middleware untuk memeriksa **role** dari request.
+
+Contoh kasus yang diterapkan:
+
+```text id="r4m8q2"
+User dengan role = admin
+        ↓
+Boleh menghapus user
+
+User dengan role = user
+        ↓
+Tidak boleh menghapus user
+```
+
+Konsep utama yang dipelajari:
+
+- `CanActivate`
+- `ExecutionContext`
+- `RoleGuard`
+- `@UseGuards()`
+- Authorization vs Authentication
+- Guard pada endpoint tertentu
+- Request lifecycle NestJS
+
+---
+
+## 1. Authentication vs Authorization
+
+Sebelum memahami Guard, penting membedakan dua konsep keamanan.
+
+### Authentication
+
+Authentication menjawab:
+
+> **"Siapa kamu?"**
+
+Pada materi sebelumnya, API Key digunakan untuk memastikan request memiliki credential yang valid.
+
+```text id="g3x8s1"
+Request
+   ↓
+API Key
+   ↓
+Valid?
+   ↓
+Authenticated
+```
+
+### Authorization
+
+Authorization menjawab:
+
+> **"Apakah kamu boleh melakukan ini?"**
+
+Pada materi ini, role digunakan untuk menentukan izin.
+
+```text id="n2k6v4"
+Request
+   ↓
+Role
+   ↓
+admin?
+   ↓
+Boleh mengakses endpoint
+```
+
+Jadi:
+
+```text id="w7p3c9"
+Authentication → Identitas / credential
+Authorization  → Hak akses
+```
+
+---
+
+## 2. Mengenal Guard
+
+Guard merupakan mekanisme NestJS yang digunakan untuk menentukan apakah sebuah request boleh diteruskan menuju handler.
+
+Guard mengimplementasikan interface:
+
+```ts id="p8x4m1"
+CanActivate;
+```
+
+dan memiliki method:
+
+```ts id="z5k7q2"
+canActivate();
+```
+
+Contoh struktur dasar:
+
+```ts id="s3v9n6"
+@Injectable()
+export class RoleGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    // authorization logic
+  }
+}
+```
+
+Method `canActivate()` mengembalikan:
+
+```text id="j6m2r8"
+true  → request diperbolehkan
+false → request ditolak
+```
+
+Dalam implementasi ini digunakan exception agar response error lebih jelas.
+
+---
+
+## 3. Implementasi RoleGuard
+
+File baru:
+
+```text id="1x7k4m"
+src/guards/role.guard.ts
+```
+
+Guard mengambil request menggunakan `ExecutionContext`.
+
+Contoh:
+
+```ts id="4p8s2n"
+@Injectable()
+export class RoleGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+
+    const role = request.headers['role'];
+
+    if (role !== 'admin') {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    return true;
+  }
+}
+```
+
+Prosesnya sederhana:
+
+```text id="q6m9v3"
+Request
+   ↓
+Ambil header role
+   ↓
+role === "admin"?
+   ├── Ya  → return true
+   └── Tidak → UnauthorizedException
+```
+
+---
+
+## 4. Mengenal ExecutionContext
+
+Sama seperti pada pembahasan request lifecycle sebelumnya, Guard menggunakan:
+
+```ts id="k2r7x5"
+ExecutionContext;
+```
+
+untuk mengetahui konteks request yang sedang diproses.
+
+Untuk HTTP request:
+
+```ts id="h4m8p1"
+const request = context.switchToHttp().getRequest();
+```
+
+Kemudian header dapat diakses:
+
+```ts id="t7q3n9"
+const role = request.headers['role'];
+```
+
+`ExecutionContext` membuat Guard tidak perlu bergantung langsung pada object Express tertentu dan memberikan abstraction yang disediakan NestJS.
+
+---
+
+## 5. Menggunakan `@UseGuards()`
+
+Guard tidak harus diterapkan ke seluruh aplikasi.
+
+Pada implementasi ini, `RoleGuard` hanya digunakan pada endpoint DELETE user.
+
+Contoh:
+
+```ts id="v9s4k2"
+@Delete(':id')
+@UseGuards(RoleGuard)
+deleteUser(@Param('id', ParseIntPipe) id: number) {
+  return this.userService.deleteUser(id);
+}
+```
+
+Dengan pendekatan ini, Guard hanya berjalan pada endpoint tersebut.
+
+---
+
+## 6. Mengapa Guard Hanya pada Endpoint DELETE?
+
+Tidak semua operasi membutuhkan role `admin`.
+
+Misalnya:
+
+```text id="x3m7p8"
+GET /user
+    ↓
+Tidak membutuhkan admin
+
+GET /user/:id
+    ↓
+Tidak membutuhkan admin
+
+POST /user
+    ↓
+Tergantung kebutuhan
+
+DELETE /user/:id
+    ↓
+Harus admin
+```
+
+Dengan:
+
+```ts id="w8n2q5"
+@UseGuards(RoleGuard)
+```
+
+proteksi dapat diterapkan secara granular.
+
+Ini lebih fleksibel dibandingkan langsung menjadikan Guard global.
+
+---
+
+## 7. Guard Global vs Endpoint
+
+NestJS memungkinkan Guard diterapkan pada beberapa level.
+
+### Endpoint
+
+```ts id="k6p4z1"
+@UseGuards(RoleGuard)
+```
+
+Hanya satu endpoint.
+
+### Controller
+
+```ts id="q9s5m3"
+@UseGuards(RoleGuard)
+@Controller('user')
+```
+
+Seluruh endpoint dalam controller.
+
+### Global
+
+```ts id="r2x7v8"
+app.useGlobalGuards(new RoleGuard());
+```
+
+Seluruh aplikasi.
+
+Pada implementasi ini digunakan:
+
+```text id="m4n8c2"
+Endpoint Level
+```
+
+karena hanya DELETE user yang membutuhkan role `admin`.
+
+---
+
+## 8. Request Lifecycle
+
+Materi sebelumnya membahas Middleware. Sekarang Guard ditambahkan setelahnya.
+
+Secara sederhana:
+
+```text id="a7k3p9"
+HTTP Request
+      ↓
+Middleware
+      │
+      └── API Key Authentication
+      ↓
+Guard
+      │
+      └── Role Authorization
+      ↓
+Interceptor
+      ↓
+Pipe
+      ↓
+Controller
+      ↓
+Service
+      ↓
+Response
+```
+
+Untuk endpoint DELETE:
+
+```text id="j5r8w2"
+DELETE /user/10
+        ↓
+ApiKeyMiddleware
+        ↓
+API Key valid?
+        ↓
+RoleGuard
+        ↓
+role = admin?
+        ↓
+Controller
+        ↓
+UserService
+        ↓
+Delete User
+```
+
+Jika salah satu layer keamanan gagal, request tidak diteruskan.
+
+---
+
+## 9. Middleware vs Guard
+
+Keduanya sama-sama dapat digunakan untuk security, tetapi memiliki tanggung jawab yang berbeda.
+
+| Middleware                               | Guard                                     |
+| ---------------------------------------- | ----------------------------------------- |
+| Berjalan lebih awal                      | Berjalan setelah middleware               |
+| Memproses request                        | Menentukan akses                          |
+| Cocok untuk API Key / preprocessing      | Cocok untuk authorization                 |
+| Tidak mengetahui handler secara langsung | Mengetahui execution context              |
+| Memanggil `next()`                       | Mengembalikan `boolean` / throw exception |
+
+Pada aplikasi ini:
+
+```text id="u3m8x6"
+Middleware
+    ↓
+"Apakah API key valid?"
+    ↓
+Guard
+    ↓
+"Apakah user memiliki role yang sesuai?"
+```
+
+Sehingga kedua layer memiliki tanggung jawab yang berbeda.
+
+---
+
+## 10. Authentication dan Authorization Digabungkan
+
+Setelah materi Middleware dan Guard, security flow aplikasi menjadi:
+
+```text id="n6p2s8"
+                    Request
+                       ↓
+              ┌────────────────┐
+              │   Middleware   │
+              │                │
+              │ API Key Check  │
+              └───────┬────────┘
+                      ↓
+              ┌────────────────┐
+              │     Guard      │
+              │                │
+              │  Role Check    │
+              └───────┬────────┘
+                      ↓
+                 Controller
+                      ↓
+                   Service
+```
+
+Dengan konsep:
+
+```text id="c8m4r1"
+Authentication
+      ↓
+"Apakah credential valid?"
+
+Authorization
+      ↓
+"Apakah credential tersebut
+ memiliki hak akses?"
+```
+
+---
+
+## 11. Mengapa Menggunakan Guard?
+
+Guard memberikan beberapa keuntungan:
+
+- Logic authorization tidak perlu ditulis ulang di controller.
+- Proteksi dapat diterapkan secara granular.
+- Guard dapat digunakan kembali pada endpoint lain.
+- Lebih sesuai dengan konsep authorization NestJS.
+- Memisahkan security logic dari business logic.
+- Mempermudah pengembangan sistem role-based access control.
+
+Misalnya nanti terdapat endpoint:
+
+```text id="f2q7m5"
+DELETE /user/:id
+DELETE /post/:id
+DELETE /product/:id
+```
+
+Ketiganya dapat menggunakan:
+
+```ts id="b9x3k6"
+@UseGuards(RoleGuard)
+```
+
+tanpa menyalin logic pengecekan role ke setiap controller.
+
+---
+
+## 12. Integrasi dengan Sistem Authentication yang Lebih Kompleks
+
+Saat ini role diambil langsung dari header:
+
+```http id="e7k2m4"
+role: admin
+```
+
+Pendekatan ini hanya cocok untuk pembelajaran atau simulasi sederhana.
+
+Pada sistem nyata, client seharusnya tidak dipercaya untuk menentukan role dirinya sendiri melalui header sederhana.
+
+Contohnya pada sistem JWT:
+
+```text id="p4m8x2"
+Login
+  ↓
+Authentication
+  ↓
+JWT
+  ↓
+Middleware / Guard
+  ↓
+Decode JWT
+  ↓
+Payload:
+{
+  sub: 1,
+  role: "admin"
+}
+  ↓
+RoleGuard
+  ↓
+Authorization
+```
+
+Dengan demikian role berasal dari sumber yang telah dipercaya, bukan dari input bebas client.
+
+---
+
+## 13. Unit Test
+
+Nest CLI juga membuat:
+
+```text id="m7c2x5"
+src/guards/role.guard.spec.ts
+```
+
+Test saat ini masih berupa boilerplate untuk memastikan Guard dapat diinstansiasi.
+
+Test yang lebih lengkap nantinya dapat menguji:
+
+```text id="r8n3k6"
+role = admin
+     ↓
+canActivate() → true
+
+role = user
+     ↓
+UnauthorizedException
+
+role tidak ada
+     ↓
+UnauthorizedException
+```
+
+Dengan begitu behavior authorization dapat diverifikasi secara otomatis.
+
+---
+
+## Dampak Perubahan
+
+### Keuntungan
+
+- Endpoint DELETE user sekarang membutuhkan role `admin`.
+- Authorization dipisahkan dari business logic.
+- Proteksi dapat diterapkan secara spesifik pada endpoint.
+- Guard dapat digunakan kembali pada endpoint lain.
+- Request tanpa role atau dengan role yang salah akan ditolak.
+- Struktur security aplikasi menjadi lebih terorganisasi.
+
+### Konsekuensi
+
+Endpoint:
+
+```text id="q5m9s2"
+DELETE /user/:id
+```
+
+sekarang membutuhkan:
+
+```http id="z3x7k1"
+role: admin
+```
+
+Jika role tidak ada atau bukan `admin`, request menghasilkan:
+
+```text id="f6p2v8"
+401 Unauthorized
+```
+
+Endpoint lain tidak terpengaruh karena Guard hanya diterapkan pada DELETE endpoint.
+
+---
+
+## Hubungan dengan Materi Sebelumnya
+
+Sejauh ini struktur request lifecycle yang dipelajari menjadi semakin lengkap:
+
+```text id="k9m4x7"
+                         HTTP Request
+                              ↓
+                         Middleware
+                              ↓
+                      API Key Authentication
+                              ↓
+                            Guard
+                              ↓
+                       Role Authorization
+                              ↓
+                           Pipes
+                              ↓
+                      Input Validation
+                              ↓
+                         Controller
+                              ↓
+                           Service
+                              ↓
+                       Business Logic
+                              ↓
+                        Interceptor
+                              ↓
+                    Response Transformation
+                              ↓
+                        HTTP Response
+```
+
+Materi yang telah dipelajari:
+
+- Provider
+- Dependency Injection
+- `@Injectable()`
+- Service Layer
+- Separation of Concerns
+- Exception Handling
+- `NotFoundException`
+- Interceptor
+- `ValidationPipe`
+- DTO
+- `class-validator`
+- `ParseIntPipe`
+- Middleware
+- `NestMiddleware`
+- `MiddlewareConsumer`
+- `NestModule`
+- Guard
+- `CanActivate`
+- `ExecutionContext`
+- `@UseGuards()`
+- Authentication
+- Authorization
+
+---
+
+## Kesimpulan
+
+Pada materi ini saya mempelajari **Guard sebagai mekanisme authorization pada NestJS**.
+
+Jika Middleware sebelumnya digunakan untuk memeriksa **authentication** melalui API Key, maka Guard digunakan untuk menentukan **authorization**, yaitu apakah request memiliki hak untuk menjalankan endpoint tertentu.
+
+Dengan `CanActivate`, `ExecutionContext`, dan `@UseGuards()`, RoleGuard dapat diterapkan secara spesifik pada endpoint DELETE user sehingga hanya request dengan role `admin` yang dapat menjalankannya.
+
+Hal penting yang dipelajari adalah bahwa **Middleware dan Guard bukanlah hal yang sama**. Middleware dapat melakukan pemrosesan awal terhadap request, sedangkan Guard secara khusus cocok untuk menentukan apakah request diperbolehkan masuk ke handler berdasarkan aturan authorization.
