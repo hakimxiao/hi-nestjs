@@ -1156,3 +1156,545 @@ Pada materi ini saya mempelajari bahwa **Pipe merupakan bagian penting dari requ
 `ValidationPipe` bekerja bersama DTO dan `class-validator` untuk memastikan body request memenuhi aturan yang telah ditentukan, sedangkan `ParseIntPipe` digunakan untuk mengubah parameter route dari string menjadi integer sekaligus memastikan nilainya valid.
 
 Dengan adanya Pipe, validasi input tidak lagi perlu dilakukan secara manual di setiap controller atau service sehingga arsitektur aplikasi menjadi lebih bersih, aman, dan mengikuti prinsip **Separation of Concerns**.
+
+# Middleware dan Autentikasi API Key
+
+## Apa yang Dipelajari
+
+Pada materi ini saya mempelajari **Middleware pada NestJS** dan bagaimana middleware dapat digunakan untuk membuat layer keamanan sebelum request mencapai controller.
+
+Implementasi yang dibuat adalah middleware autentikasi sederhana berbasis **API Key**. Setiap request menuju `UserController` harus menyertakan header `x-api-key` dengan nilai API key yang sesuai.
+
+Konsep utama yang dipelajari:
+
+- `NestMiddleware`
+- `MiddlewareConsumer`
+- `NestModule`
+- `configure()`
+- `forRoutes()`
+- `next()`
+- `UnauthorizedException`
+- Request lifecycle NestJS
+- Middleware sebagai layer autentikasi
+
+---
+
+## 1. Mengenal Middleware
+
+Middleware merupakan fungsi yang dijalankan pada proses request sebelum request diteruskan ke handler berikutnya.
+
+Secara sederhana:
+
+```text id="8qj4p2"
+HTTP Request
+     ↓
+ Middleware
+     ↓
+ Controller
+     ↓
+ Service
+     ↓
+ Response
+```
+
+Middleware dapat digunakan untuk berbagai kebutuhan yang berkaitan dengan request, seperti:
+
+- Authentication
+- Logging
+- Request modification
+- Validasi tertentu
+- CORS
+- Menambahkan informasi ke request
+- Filtering request
+
+Pada materi ini middleware digunakan untuk **autentikasi API Key**.
+
+---
+
+## 2. Membuat ApiKeyMiddleware
+
+File baru:
+
+```text id="3k3v1z"
+src/middleware/api-key.middleware.ts
+```
+
+Middleware mengimplementasikan interface:
+
+```ts id="y6w5t8"
+NestMiddleware;
+```
+
+Contoh struktur:
+
+```ts id="3m4k2f"
+@Injectable()
+export class ApiKeyMiddleware implements NestMiddleware {
+  use(req: Request, res: Response, next: NextFunction) {
+    const apiKey = req.headers['x-api-key'];
+
+    if (apiKey !== 'secret-key-123') {
+      throw new UnauthorizedException('Invalid API key');
+    }
+
+    next();
+  }
+}
+```
+
+---
+
+## 3. Memeriksa Header `x-api-key`
+
+Client harus mengirim API key melalui HTTP header:
+
+```http id="u7p5sa"
+x-api-key: secret-key-123
+```
+
+Middleware mengambil nilai tersebut:
+
+```ts id="9h3k5x"
+const apiKey = req.headers['x-api-key'];
+```
+
+Kemudian dibandingkan dengan API key yang diharapkan.
+
+Jika salah:
+
+```ts id="b3r7wq"
+throw new UnauthorizedException('Invalid API key');
+```
+
+Jika benar:
+
+```ts id="j2k9sx"
+next();
+```
+
+---
+
+## 4. Mengenal `next()`
+
+`next()` merupakan bagian penting dari middleware.
+
+Fungsinya adalah memberitahu NestJS bahwa middleware telah selesai memproses request dan request boleh diteruskan.
+
+Alurnya:
+
+```text id="9n4m6k"
+Request
+   ↓
+ApiKeyMiddleware
+   ↓
+   ├── API Key Salah
+   │      ↓
+   │  UnauthorizedException
+   │      ↓
+   │  HTTP 401
+   │
+   └── API Key Benar
+          ↓
+        next()
+          ↓
+      Controller
+```
+
+Jika `next()` tidak dipanggil dan tidak ada response/error yang diberikan, request dapat berhenti di middleware.
+
+---
+
+## 5. UnauthorizedException
+
+Ketika API key tidak valid, middleware melempar:
+
+```ts id="0x5v1q"
+throw new UnauthorizedException('Invalid API key');
+```
+
+NestJS kemudian menangani exception tersebut dan menghasilkan HTTP `401 Unauthorized`.
+
+Hal ini berhubungan dengan materi sebelumnya mengenai **Exception Handling**.
+
+Jadi middleware tidak perlu menulis response HTTP secara manual.
+
+```text id="8b3x4z"
+Invalid API Key
+      ↓
+UnauthorizedException
+      ↓
+NestJS Exception Handler
+      ↓
+HTTP 401
+```
+
+---
+
+## 6. Mendaftarkan Middleware
+
+Middleware tidak cukup hanya dibuat. Middleware juga harus didaftarkan agar NestJS mengetahui kapan middleware tersebut digunakan.
+
+`AppModule` diubah menjadi:
+
+```ts id="8q7x2m"
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(ApiKeyMiddleware).forRoutes(UserController);
+  }
+}
+```
+
+Beberapa konsep baru terdapat pada kode tersebut.
+
+### `NestModule`
+
+`NestModule` memungkinkan module memiliki konfigurasi middleware melalui method:
+
+```ts id="6z3p5r"
+configure();
+```
+
+### `MiddlewareConsumer`
+
+`MiddlewareConsumer` digunakan untuk menentukan middleware mana yang digunakan dan route mana yang dilindungi.
+
+### `apply()`
+
+Menentukan middleware yang ingin diterapkan:
+
+```ts id="2h8k4s"
+consumer.apply(ApiKeyMiddleware);
+```
+
+### `forRoutes()`
+
+Menentukan route yang akan menggunakan middleware:
+
+```ts id="w5x3c9"
+.forRoutes(UserController);
+```
+
+Pada implementasi ini middleware hanya diterapkan pada `UserController`.
+
+---
+
+## 7. Mengapa Tidak Menggunakan Global Middleware?
+
+Middleware dapat diterapkan secara global maupun spesifik.
+
+Jika diterapkan ke seluruh aplikasi:
+
+```text id="j3q8a1"
+Semua Request
+     ↓
+ApiKeyMiddleware
+```
+
+Namun implementasi saat ini menggunakan:
+
+```ts id="n5s7y2"
+.forRoutes(UserController);
+```
+
+Sehingga:
+
+```text id="4k7c9p"
+UserController
+     ↓
+ApiKeyMiddleware
+     ↓
+Controller
+```
+
+Sedangkan controller lain tidak terkena middleware tersebut.
+
+Pendekatan ini memberikan fleksibilitas.
+
+Misalnya di masa depan terdapat:
+
+```text id="1w3m8k"
+AuthController
+PublicController
+UserController
+AdminController
+```
+
+Kita dapat menentukan controller mana yang membutuhkan autentikasi tanpa memengaruhi endpoint lainnya.
+
+---
+
+## 8. Middleware dalam Request Lifecycle
+
+Middleware merupakan salah satu bagian dari request lifecycle NestJS.
+
+Secara konseptual:
+
+```text id="m4v9k2"
+HTTP Request
+     ↓
+Middleware
+     ↓
+Guards
+     ↓
+Interceptors
+     ↓
+Pipes
+     ↓
+Controller
+     ↓
+Service
+     ↓
+Response
+```
+
+Middleware dapat digunakan untuk melakukan pemeriksaan awal sebelum request diproses lebih jauh.
+
+Dalam kasus API Key:
+
+```text id="k2s8x4"
+Request
+   ↓
+API Key Middleware
+   ↓
+Valid?
+ ┌─┴──────────┐
+ │            │
+No           Yes
+ │            │
+ ↓            ↓
+401         Guards
+              ↓
+          Interceptors
+              ↓
+             Pipes
+              ↓
+          Controller
+              ↓
+           Service
+```
+
+Hal ini membuat middleware cocok untuk kebutuhan pemeriksaan request yang bersifat umum atau berada di awal lifecycle.
+
+---
+
+## 9. Middleware vs Materi Sebelumnya
+
+Dengan materi sebelumnya, sekarang mulai terlihat perbedaan tanggung jawab masing-masing fitur NestJS.
+
+| Fitur       | Tanggung Jawab                                    |
+| ----------- | ------------------------------------------------- |
+| Middleware  | Memproses request sebelum masuk lebih jauh        |
+| Guard       | Menentukan apakah request boleh mengakses handler |
+| Pipe        | Validasi dan transformasi input                   |
+| Controller  | Routing dan request handling                      |
+| Service     | Business logic                                    |
+| Interceptor | Transformasi response / cross-cutting concern     |
+| Exception   | Menangani kondisi error                           |
+
+Contohnya pada aplikasi saat ini:
+
+```text id="2v5k8n"
+Request
+   ↓
+Middleware
+   │
+   └── Cek API Key
+   ↓
+Pipe
+   │
+   └── Validasi Input
+   ↓
+Controller
+   ↓
+Service
+   │
+   └── Business Logic
+   ↓
+Interceptor
+   │
+   └── Format Response
+   ↓
+Client
+```
+
+---
+
+## 10. Perbaikan Bug pada `createUser()`
+
+Selain middleware, terdapat perbaikan kecil pada `UserService`.
+
+Sebelumnya:
+
+```ts id="7c1m4x"
+{
+  id: this.users.length + 1,
+  email: '',
+  ...dto,
+}
+```
+
+Property `email` kosong tersebut sebenarnya tidak diperlukan karena `email` sudah berasal dari DTO.
+
+Implementasi diperbaiki menjadi:
+
+```ts id="x6q2p9"
+{
+  id: this.users.length + 1,
+  ...dto,
+}
+```
+
+Dengan demikian data email langsung berasal dari:
+
+```ts id="j8m4s3"
+CreateUserDto;
+```
+
+Perubahan ini juga mencegah adanya property default yang berpotensi membingungkan ketika digabungkan dengan spread operator.
+
+---
+
+## 11. Unit Test
+
+Nest CLI juga menghasilkan:
+
+```text id="8p3j6x"
+src/middleware/api-key.middleware.spec.ts
+```
+
+Test saat ini masih sederhana dan digunakan untuk memastikan middleware dapat diinstansiasi.
+
+Contoh:
+
+```ts id="s6k2v9"
+describe('ApiKeyMiddleware', () => {
+  it('should be defined', () => {
+    expect(new ApiKeyMiddleware()).toBeDefined();
+  });
+});
+```
+
+Test ini masih merupakan fondasi.
+
+Test yang lebih lengkap nantinya dapat memverifikasi:
+
+```text id="6x4n8c"
+API Key benar
+     ↓
+next() dipanggil
+
+API Key salah
+     ↓
+UnauthorizedException
+
+API Key tidak ada
+     ↓
+UnauthorizedException
+```
+
+---
+
+## 12. Keamanan dan Environment Variable
+
+Saat ini API key masih ditulis langsung di source code:
+
+```ts id="3r6m1p"
+'secret-key-123';
+```
+
+Pendekatan ini masih dapat digunakan untuk pembelajaran atau development sederhana, tetapi **tidak aman untuk production**.
+
+Idealnya API key disimpan di environment variable:
+
+```env id="q8k2s7"
+API_KEY=secret-key-123
+```
+
+Kemudian aplikasi membaca:
+
+```ts id="5m9x3v"
+process.env.API_KEY;
+```
+
+Dengan begitu secret tidak perlu disimpan langsung di source code atau repository.
+
+Untuk production, autentikasi API key sederhana seperti ini juga biasanya perlu dikembangkan lebih lanjut, misalnya dengan secret management, rotasi key, hashing/verification yang tepat, rate limiting, dan audit logging sesuai kebutuhan aplikasi.
+
+---
+
+## Dampak Perubahan
+
+### Keuntungan
+
+- Endpoint user sekarang memiliki proteksi autentikasi.
+- Request tanpa API key dapat ditolak lebih awal.
+- Request dengan API key salah menghasilkan HTTP 401.
+- Middleware dapat diterapkan secara selektif pada controller tertentu.
+- Tidak perlu menambahkan pengecekan API key berulang kali pada setiap method controller.
+- Struktur aplikasi semakin mengikuti prinsip Separation of Concerns.
+
+### Konsekuensi
+
+Client yang sebelumnya melakukan request ke endpoint user harus menambahkan:
+
+```http id="1m5c8v"
+x-api-key: secret-key-123
+```
+
+Jika header tidak dikirim atau nilainya salah, request akan ditolak.
+
+---
+
+## Hubungan dengan Materi Sebelumnya
+
+Perjalanan konsep NestJS yang sudah dipelajari sekarang semakin lengkap:
+
+```text id="0h6y2p"
+                    HTTP Request
+                         ↓
+                    Middleware
+                         ↓
+                  API Key Validation
+                         ↓
+                       Pipes
+                         ↓
+                  Input Validation
+                         ↓
+                    Controller
+                         ↓
+                     Service
+                         ↓
+                  Business Logic
+                         ↓
+                  Interceptor
+                         ↓
+                 Response Formatting
+                         ↓
+                    HTTP Response
+```
+
+Sedangkan ketika terjadi kesalahan:
+
+```text id="2n7x4k"
+Middleware
+    ↓
+UnauthorizedException
+    ↓
+NestJS Exception Handler
+    ↓
+HTTP 401
+```
+
+Ini menunjukkan bagaimana berbagai fitur NestJS memiliki tanggung jawab masing-masing dan dapat dikombinasikan untuk membangun request lifecycle yang terstruktur.
+
+---
+
+## Kesimpulan
+
+Pada materi ini saya mempelajari **Middleware NestJS** dengan membuat `ApiKeyMiddleware` untuk melindungi endpoint user menggunakan API key.
+
+Saya juga mempelajari bagaimana middleware didaftarkan melalui `NestModule`, dikonfigurasi menggunakan `MiddlewareConsumer`, dan dibatasi menggunakan `forRoutes()`.
+
+Konsep penting lainnya adalah penggunaan `next()` untuk meneruskan request ketika validasi berhasil dan `UnauthorizedException` untuk menghentikan request yang tidak terotorisasi.
+
+Implementasi ini memperkuat pemahaman mengenai **request lifecycle, authentication layer, middleware configuration, dan Separation of Concerns** pada NestJS.
