@@ -674,3 +674,485 @@ Pada materi ini saya mempelajari bahwa NestJS menyediakan **Interceptor** untuk 
 TransformInterceptor digunakan untuk menstandarisasi format respons API secara global. Dengan mendaftarkannya melalui `app.useGlobalInterceptors()`, seluruh endpoint otomatis mengembalikan struktur respons yang konsisten berupa `statusCode`, `message`, dan `data`.
 
 Pendekatan ini mengikuti best practice NestJS dalam menangani cross-cutting concerns dan membantu menjaga konsistensi kontrak API di seluruh aplikasi.
+
+# ValidationPipe, class-validator, dan ParseIntPipe
+
+## Apa yang Dipelajari
+
+Pada materi ini saya mempelajari **validasi input dan parsing parameter** pada NestJS menggunakan `ValidationPipe`, `class-validator`, `class-transformer`, dan `ParseIntPipe`.
+
+Tujuan utamanya adalah memastikan data yang masuk ke aplikasi sudah memiliki bentuk dan nilai yang sesuai **sebelum mencapai controller dan business logic**.
+
+Sebelumnya, service harus mempercayai bahwa data yang diterima sudah benar. Setelah menggunakan validation pipe, NestJS dapat melakukan validasi secara otomatis berdasarkan aturan yang didefinisikan pada DTO.
+
+---
+
+## Konsep Utama
+
+Ada tiga konsep penting yang dipelajari:
+
+```text
+Request Body
+    ↓
+ValidationPipe
+    ↓
+DTO + class-validator
+    ↓
+Controller
+    ↓
+Service
+```
+
+Sedangkan untuk parameter seperti ID:
+
+```text
+GET /users/10
+       ↓
+ParseIntPipe
+       ↓
+id: number
+       ↓
+Controller
+```
+
+Dengan demikian, **validasi body** dan **parsing parameter route** dapat ditangani pada layer masing-masing.
+
+---
+
+## 1. ValidationPipe
+
+`ValidationPipe` digunakan untuk mengaktifkan validasi otomatis pada request.
+
+Pada `main.ts`, pipe didaftarkan secara global:
+
+```ts id="w5pxh6"
+app.useGlobalPipes(new ValidationPipe());
+```
+
+Karena bersifat global, pipe ini dapat digunakan oleh seluruh endpoint aplikasi.
+
+Artinya, setiap request yang menggunakan DTO dengan decorator validasi akan diperiksa secara otomatis sebelum masuk ke controller.
+
+---
+
+## 2. DTO dan class-validator
+
+DTO (_Data Transfer Object_) digunakan untuk mendefinisikan bentuk data yang boleh diterima oleh endpoint.
+
+Contoh `CreateUserDto`:
+
+```ts id="8x24eq"
+import { IsEmail, IsString, MinLength } from 'class-validator';
+
+export class CreateUserDto {
+  @IsString()
+  @MinLength(3)
+  name!: string;
+
+  @IsEmail()
+  email!: string;
+}
+```
+
+Dekorator dari `class-validator` digunakan untuk mendefinisikan aturan validasi.
+
+### `@IsString()`
+
+Memastikan nilai `name` berupa string.
+
+```ts id="2bqy0w"
+@IsString()
+name!: string;
+```
+
+### `@MinLength(3)`
+
+Memastikan panjang string minimal tiga karakter.
+
+```ts id="jceq1x"
+@MinLength(3)
+name!: string;
+```
+
+### `@IsEmail()`
+
+Memastikan nilai `email` memiliki format email yang valid.
+
+```ts id="a4f9cc"
+@IsEmail()
+email!: string;
+```
+
+---
+
+## Contoh Request Valid
+
+```json id="d9m5hj"
+{
+  "name": "Abu",
+  "email": "abu@example.com"
+}
+```
+
+Request tersebut memenuhi aturan DTO sehingga dapat diteruskan ke controller.
+
+---
+
+## Contoh Request Tidak Valid
+
+```json id="x1z9ag"
+{
+  "name": "Ab",
+  "email": "bukan-email"
+}
+```
+
+Request akan ditolak karena:
+
+```text id="dd1brw"
+name  → kurang dari 3 karakter
+email → format tidak valid
+```
+
+Controller tidak perlu melakukan pengecekan manual karena `ValidationPipe` menangani proses tersebut.
+
+---
+
+## 3. Mengapa Validasi Dilakukan Sebelum Controller?
+
+Salah satu tujuan utama validation pipe adalah mencegah data yang tidak valid masuk ke business logic.
+
+Alurnya:
+
+```text id="d8p0s4"
+Client
+  ↓
+Request
+  ↓
+ValidationPipe
+  ↓
+❌ Invalid → HTTP 400
+  │
+  └── tidak diteruskan
+
+  ↓
+✅ Valid
+  ↓
+Controller
+  ↓
+Service
+```
+
+Hal ini membuat service dapat berfokus pada business logic tanpa harus mengulang validasi dasar pada setiap method.
+
+---
+
+## 4. ParseIntPipe
+
+Selain validasi request body, NestJS juga menyediakan pipe untuk melakukan parsing parameter.
+
+Contohnya pada endpoint `getUserById`:
+
+```ts id="w9h4pg"
+@Get(':id')
+getUserById(
+  @Param('id', ParseIntPipe) id: number,
+) {
+  return this.userService.findUserById(id);
+}
+```
+
+Parameter URL pada HTTP pada dasarnya diterima sebagai string.
+
+Misalnya:
+
+```text id="4p1p2s"
+GET /users/10
+```
+
+Nilai:
+
+```ts id="w7y04j"
+id;
+```
+
+awalnya merupakan:
+
+```ts id="qmbz3d"
+'10';
+```
+
+Dengan `ParseIntPipe`, NestJS mengubahnya menjadi:
+
+```ts id="d5r8ax"
+10;
+```
+
+sehingga controller dapat bekerja dengan tipe:
+
+```ts id="2i3m3k"
+id: number;
+```
+
+---
+
+## Apa yang Terjadi Jika ID Bukan Angka?
+
+Misalnya client mengirim:
+
+```text id="5i4w8q"
+GET /users/abc
+```
+
+`ParseIntPipe` akan gagal melakukan parsing dan NestJS akan menghasilkan error response secara otomatis.
+
+Dengan demikian request tidak diteruskan ke service.
+
+Ini lebih baik dibandingkan membiarkan nilai `"abc"` masuk ke business logic dan baru menyebabkan error di kemudian hari.
+
+---
+
+## ValidationPipe vs ParseIntPipe
+
+Keduanya sama-sama merupakan **Pipe**, tetapi memiliki tanggung jawab yang berbeda.
+
+| Pipe             | Fungsi                                             |
+| ---------------- | -------------------------------------------------- |
+| `ValidationPipe` | Memvalidasi request berdasarkan DTO                |
+| `ParseIntPipe`   | Mengubah dan memvalidasi parameter menjadi integer |
+
+Contohnya:
+
+```text id="n7v1ks"
+POST /users
+      ↓
+ValidationPipe
+      ↓
+CreateUserDto
+      ↓
+Controller
+```
+
+Sedangkan:
+
+```text id="x2k5jr"
+GET /users/10
+       ↓
+ParseIntPipe
+       ↓
+id: number
+       ↓
+Controller
+```
+
+---
+
+## 5. class-validator dan class-transformer
+
+Implementasi ini menambahkan dua dependency:
+
+```json id="5h2n4g"
+{
+  "class-validator": "^0.15.1",
+  "class-transformer": "^0.5.1"
+}
+```
+
+### class-validator
+
+Digunakan untuk menyediakan decorator validasi seperti:
+
+```ts id="h3j0kt"
+@IsString()
+@MinLength()
+@IsEmail()
+```
+
+### class-transformer
+
+Digunakan bersama mekanisme transformasi object yang dibutuhkan oleh `ValidationPipe` dan ekosistem DTO NestJS.
+
+Secara sederhana:
+
+```text id="h5z8af"
+class-validator
+      ↓
+Menentukan aturan validasi
+
+class-transformer
+      ↓
+Membantu proses transformasi object
+
+ValidationPipe
+      ↓
+Mengintegrasikan keduanya ke dalam request pipeline
+```
+
+---
+
+## 6. Definite Assignment Assertion
+
+Pada DTO digunakan tanda `!`:
+
+```ts id="3s2h3c"
+name!: string;
+email!: string;
+```
+
+Tanda `!` disebut **definite assignment assertion**.
+
+TypeScript strict mode dapat menganggap property tersebut belum diinisialisasi pada constructor.
+
+Dengan `!`, kita memberi informasi kepada TypeScript bahwa property tersebut akan tersedia ketika object digunakan.
+
+Ini bukan berarti `!` melakukan validasi.
+
+Validasi tetap dilakukan oleh:
+
+```ts id="3r1k8x"
+@IsString()
+@MinLength(3)
+@IsEmail()
+```
+
+---
+
+## 7. Perubahan Konfigurasi TypeScript
+
+Konfigurasi TypeScript juga disesuaikan:
+
+```text id="3d2fmx"
+nodenext → node16
+```
+
+pada:
+
+```text id="6jckgk"
+module
+moduleResolution
+```
+
+Beberapa opsi seperti:
+
+```text id="5a8pjq"
+resolvePackageJsonExports
+isolatedModules
+```
+
+juga disesuaikan untuk menghindari konflik dengan dependency dan module resolution yang digunakan oleh `class-validator`.
+
+Perubahan ini bukan bagian dari business logic, tetapi merupakan penyesuaian lingkungan TypeScript agar dependency validasi dapat bekerja dengan konfigurasi project.
+
+---
+
+## Separation of Concerns
+
+Dengan adanya Pipe, tanggung jawab aplikasi menjadi semakin terpisah.
+
+```text id="h8p2p7"
+                Request
+                   ↓
+        ┌─────────────────────┐
+        │       Pipes         │
+        │ Validation / Parse  │
+        └─────────────────────┘
+                   ↓
+              Controller
+                   ↓
+               Service
+                   ↓
+             Business Logic
+```
+
+Setiap layer memiliki tanggung jawab yang berbeda:
+
+```text id="j9s6qw"
+Pipe       → Validasi & transformasi input
+Controller → Routing & request handling
+Service    → Business logic
+Interceptor→ Transformasi response
+Exception  → Penanganan error
+```
+
+Ini merupakan perkembangan penting dari struktur NestJS yang sebelumnya sudah dipelajari.
+
+---
+
+## Hubungan dengan Materi Sebelumnya
+
+Struktur aplikasi sekarang mulai membentuk request lifecycle yang lebih lengkap:
+
+```text id="l5j7k2"
+                    HTTP Request
+                         ↓
+                  ┌─────────────┐
+                  │    Pipes    │
+                  │ Validation  │
+                  │   Parsing   │
+                  └──────┬──────┘
+                         ↓
+                    Controller
+                         ↓
+                      Service
+                         ↓
+                Business Logic
+                         ↓
+                  NotFoundException
+                         │
+                         ↓
+                Exception Handler
+                         ↓
+                  TransformInterceptor
+                         ↓
+                  Standard Response
+```
+
+Materi yang sudah dipelajari sebelumnya:
+
+- **Provider & Dependency Injection**
+- **Service Layer**
+- **`@Injectable()`**
+- **Separation of Concerns**
+- **Exception Handling**
+- **`NotFoundException`**
+- **Interceptor**
+- **Response Transformation**
+
+Materi baru:
+
+- **Pipe**
+- **ValidationPipe**
+- **class-validator**
+- **class-transformer**
+- **ParseIntPipe**
+- **DTO Validation**
+
+---
+
+## Dampak Perubahan
+
+### Keuntungan
+
+- Input tidak valid dapat ditolak lebih awal.
+- Mengurangi validasi manual di service.
+- Meningkatkan integritas data.
+- Parameter route memiliki tipe yang lebih konsisten.
+- Error validation ditangani otomatis oleh NestJS.
+- Controller dan service menjadi lebih bersih.
+- Aturan validasi dapat didefinisikan langsung pada DTO.
+
+### Breaking Change
+
+Penambahan property `email` yang wajib divalidasi dapat menyebabkan client lama gagal mengirim request apabila belum menyertakan email.
+
+Selain itu, request dengan `name` kurang dari tiga karakter atau ID yang bukan integer sekarang akan ditolak.
+
+---
+
+## Kesimpulan
+
+Pada materi ini saya mempelajari bahwa **Pipe merupakan bagian penting dari request lifecycle NestJS** yang dapat digunakan untuk validasi dan transformasi data sebelum request mencapai controller.
+
+`ValidationPipe` bekerja bersama DTO dan `class-validator` untuk memastikan body request memenuhi aturan yang telah ditentukan, sedangkan `ParseIntPipe` digunakan untuk mengubah parameter route dari string menjadi integer sekaligus memastikan nilainya valid.
+
+Dengan adanya Pipe, validasi input tidak lagi perlu dilakukan secara manual di setiap controller atau service sehingga arsitektur aplikasi menjadi lebih bersih, aman, dan mengikuti prinsip **Separation of Concerns**.
