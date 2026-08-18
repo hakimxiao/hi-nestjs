@@ -4,8 +4,8 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../../generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 @Injectable()
 export class PrismaService
@@ -15,23 +15,24 @@ export class PrismaService
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
+    // const connectionString = process.env.DATABASE_URL;
     const pool = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
     super({ adapter: pool });
   }
 
   async onModuleInit() {
     try {
-      // Force an actual database connection when NestJS starts.
+      // 🚨 HARD CHECK: Force connection on startup
       await this.$connect();
-      this.logger.log('Connected to Database');
+      this.logger.log('✅ Connected to Database');
     } catch (error) {
-      this.logger.error('Failed to connect to Database', error);
+      this.logger.error('❌ Failed to connect to Database', error);
       throw error;
     }
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
-    this.logger.log('Disconnected from Database');
+    this.logger.log('🛑 Disconnected from Database');
   }
 }
