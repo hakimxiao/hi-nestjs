@@ -22,17 +22,17 @@ export class PrismaService
 
   async onModuleInit() {
     try {
-      // 🚨 HARD CHECK: Force connection on startup
+      // Hard check: force connection on startup.
       await this.$connect();
-      this.logger.log('✅ Connected to Database');
+      this.logger.log('Connected to database');
     } catch (error) {
-      this.logger.error('❌ Failed to connect to Database', error);
+      this.logger.error('Failed to connect to database', error);
       throw error;
     }
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
-    this.logger.log('🛑 Disconnected from Database');
+    this.logger.log('Disconnected from database');
   }
 }

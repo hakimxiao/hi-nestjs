@@ -36,4 +36,4 @@ import {
     },
   ],
 })
-export class ArcjectSecurityModule {}
+export class ArcjetSecurityModule {}
